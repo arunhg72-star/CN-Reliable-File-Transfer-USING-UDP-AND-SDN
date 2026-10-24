@@ -7,7 +7,7 @@ import hashlib
 HOST = "0.0.0.0"
 PORT = 5001
 BUFFER_SIZE = 8192
-RECEIVE_TIMEOUT = 5
+RECEIVE_TIMEOUT = 30
 OUTPUT_FOLDER = "received_files"
 
 
@@ -31,7 +31,6 @@ def main():
 
         try:
             metadata = json.loads(data.decode("utf-8"))
-
             if metadata.get("type") != "META":
                 raise ValueError("Expected META packet")
 
@@ -47,9 +46,7 @@ def main():
             )
 
             if (
-                not filename
-                or file_size < 0
-                or chunk_size <= 0
+                not filename or file_size < 0 or chunk_size <= 0
                 or total_chunks != expected_chunks
                 or not isinstance(expected_hash, str)
                 or len(expected_hash) != 64
@@ -64,19 +61,21 @@ def main():
             return
 
         send_ack(receiver, sender_address, -1)
-
         print("Incoming file:", filename)
         print("Expected size:", file_size, "bytes")
         print("Expected packets:", total_chunks)
 
         received_chunks = {}
-        next_seq = 0
+        transfer_complete = False
 
         while True:
             try:
                 packet_data, source = receiver.recvfrom(BUFFER_SIZE)
             except socket.timeout:
-                print("Transfer timed out while waiting for packets.")
+                if transfer_complete:
+                    print("Finished waiting for duplicate END packets.")
+                else:
+                    print("Transfer timed out while waiting for packets.")
                 return
 
             if source != sender_address:
@@ -90,7 +89,13 @@ def main():
             packet_type = packet.get("type")
             seq = packet.get("seq")
 
-            if not isinstance(seq, int):
+            if not isinstance(seq, int) or isinstance(seq, bool):
+                continue
+
+            if transfer_complete:
+                if packet_type == "END" and seq == total_chunks:
+                    send_ack(receiver, sender_address, total_chunks)
+                    print("Re-acknowledged duplicate END packet.")
                 continue
 
             if packet_type == "DATA":
@@ -106,28 +111,21 @@ def main():
                     chunk_size if seq < total_chunks - 1
                     else file_size - chunk_size * (total_chunks - 1)
                 )
-
                 if len(chunk) != expected_length:
                     continue
 
                 if seq not in received_chunks:
                     received_chunks[seq] = chunk
 
-                # ACK duplicate packets too, so a lost ACK does not
-                # force the sender to give up.
                 send_ack(receiver, sender_address, seq)
-
-                while next_seq in received_chunks:
-                    next_seq += 1
-
                 print(
                     f"Received packet {seq + 1}/{total_chunks}; "
-                    f"{len(received_chunks)}/{total_chunks} unique packets stored."
+                    f"{len(received_chunks)}/{total_chunks} "
+                    "unique packets stored."
                 )
 
             elif packet_type == "END" and seq == total_chunks:
                 if len(received_chunks) != total_chunks:
-                    # Do not finish until every data packet has arrived.
                     continue
 
                 received_data = b"".join(
@@ -139,7 +137,6 @@ def main():
                     return
 
                 actual_hash = hashlib.sha256(received_data).hexdigest()
-
                 if actual_hash != expected_hash:
                     print("Integrity check failed: SHA-256 mismatch.")
                     return
@@ -151,12 +148,13 @@ def main():
                     output_file.write(received_data)
 
                 send_ack(receiver, sender_address, total_chunks)
-
                 print("\nFile reconstructed successfully!")
                 print("Saved to:", output_path)
                 print("Total bytes saved:", len(received_data))
                 print("SHA-256 verification passed:", actual_hash)
-                return
+
+                transfer_complete = True
+                receiver.settimeout(2)
 
 
 if __name__ == "__main__":
