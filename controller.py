@@ -11,11 +11,8 @@ class RerouteController:
         self.hosts = {}
         self.links = set()
 
-        # Host-facing ports in the current Mininet topology
-        self.host_ports = {
-            (1, 3),
-            (3, 3)
-        }
+        # Host-facing ports in our Mininet topology
+        self.host_ports = {(1, 3), (3, 3)}
 
         core.openflow.addListeners(self)
         core.openflow_discovery.addListeners(self)
@@ -39,13 +36,79 @@ class RerouteController:
             self.links.discard(edge)
             log.warning("Link removed: %s", link)
 
-        # Clear old forwarding rules on every switch
+        # Remove old forwarding rules after topology changes
         for connection in core.openflow.connections:
             msg = of.ofp_flow_mod()
             msg.command = of.OFPFC_DELETE
             connection.send(msg)
 
         log.info("Forwarding rules cleared")
+
+    def get_tree_edges(self):
+        # Build a loop-free spanning tree using BFS
+        graph = {}
+        seen = set()
+
+        for edge in self.links:
+            (a, port_a), (b, port_b) = edge
+            key = tuple(sorted(((a, port_a), (b, port_b))))
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+            graph.setdefault(a, []).append((b, port_a))
+            graph.setdefault(b, []).append((a, port_b))
+
+        if not graph:
+            return set()
+
+        root = min(graph)
+        visited = {root}
+        queue = deque([root])
+        tree = set()
+
+        while queue:
+            current = queue.popleft()
+
+            for neighbour, port in sorted(graph.get(current, [])):
+                if neighbour not in visited:
+                    visited.add(neighbour)
+                    queue.append(neighbour)
+                    tree.add((current, neighbour))
+
+        return tree
+
+    def flood_loop_safe(self, event):
+        tree = self.get_tree_edges()
+        dpid = event.dpid
+        in_port = event.port
+
+        # Include host-facing ports and spanning-tree ports
+        ports = {
+            port for switch, port in self.host_ports
+            if switch == dpid
+        }
+
+        for source, destination in tree:
+            if source == dpid:
+                port = self.get_link_port(source, destination)
+                if port is not None:
+                    ports.add(port)
+
+            elif destination == dpid:
+                port = self.get_link_port(destination, source)
+                if port is not None:
+                    ports.add(port)
+
+        for port in ports:
+            if port != in_port:
+                msg = of.ofp_packet_out()
+                msg.data = event.ofp
+                msg.actions.append(
+                    of.ofp_action_output(port=port)
+                )
+                event.connection.send(msg)
 
     def _handle_PacketIn(self, event):
         packet = event.parsed
@@ -59,22 +122,16 @@ class RerouteController:
         dpid = event.dpid
         in_port = event.port
 
-        # Learn only from host-facing ports
+        # Learn host addresses only on host-facing ports
         if (dpid, in_port) in self.host_ports:
             self.hosts[packet.src] = (dpid, in_port)
 
-        # Flood broadcasts and unknown destinations
+        # Use loop-safe flooding for broadcasts and unknown destinations
         if packet.dst.is_multicast or packet.dst not in self.hosts:
-            msg = of.ofp_packet_out()
-            msg.data = event.ofp
-            msg.actions.append(
-                of.ofp_action_output(port=of.OFPP_FLOOD)
-            )
-            event.connection.send(msg)
+            self.flood_loop_safe(event)
             return
 
         dst_dpid, dst_port = self.hosts[packet.dst]
-
         path = self.find_path(dpid, dst_dpid)
 
         if path is None:
@@ -83,7 +140,7 @@ class RerouteController:
 
         log.info("Route selected: %s", path)
 
-        # Install forwarding rules along the path
+        # Install forwarding rules along the selected path
         for i, switch in enumerate(path):
             connection = core.openflow.getConnection(switch)
 
@@ -114,7 +171,7 @@ class RerouteController:
 
             connection.send(flow)
 
-        # Send the current packet along the first hop
+        # Forward the current packet through the first hop
         if len(path) > 1:
             first_port = self.get_link_port(dpid, path[1])
         else:
@@ -136,8 +193,8 @@ class RerouteController:
 
         for edge in self.links:
             (a, _), (b, _) = edge
-            graph.setdefault(a, []).append(b)
-            graph.setdefault(b, []).append(a)
+            graph.setdefault(a, set()).add(b)
+            graph.setdefault(b, set()).add(a)
 
         queue = deque([[start]])
         visited = {start}
@@ -146,7 +203,7 @@ class RerouteController:
             path = queue.popleft()
             current = path[-1]
 
-            for neighbour in graph.get(current, []):
+            for neighbour in sorted(graph.get(current, [])):
                 if neighbour == end:
                     return path + [neighbour]
 
