@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CN UDP + SDN Demo — Copy Commands</title>
+<style>
+:root{color-scheme:light dark;--bg:#101827;--panel:#172235;--panel2:#202e45;--text:#edf3fb;--muted:#aab8cb;--accent:#78b7ff;--ok:#30c48d;--border:#34445d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 18px 64px}h1{font-size:clamp(1.7rem,4vw,2.5rem);line-height:1.15;margin:0 0 10px}.intro{color:var(--muted);margin:0 0 24px}.notice{background:#25344b;border-left:4px solid var(--accent);padding:14px 16px;border-radius:8px;margin:18px 0 26px}.section{margin:30px 0}.section h2{font-size:1.35rem;margin:0 0 12px}.terminal{display:inline-block;font-size:.8rem;color:#cfe4ff;background:#263b59;border:1px solid #3d5a7d;padding:2px 9px;border-radius:999px;margin-bottom:8px}.item{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px;margin:12px 0}.item h3{margin:0 0 4px;font-size:1rem}.desc{color:var(--muted);font-size:.92rem;margin:0 0 10px}.cmdrow{display:flex;gap:10px;align-items:stretch}.cmd{flex:1;min-width:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#090f1a;border:1px solid #2e3c52;border-radius:8px;padding:12px;color:#e8f3ff;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}.copy{align-self:flex-start;border:0;background:var(--accent);color:#071322;font-weight:700;border-radius:8px;padding:10px 13px;cursor:pointer;min-width:88px}.copy:focus{outline:3px solid #fff;outline-offset:2px}.copy.done{background:var(--ok)}.small{font-size:.87rem;color:var(--muted)}.steps{color:var(--muted)}footer{margin-top:34px;color:var(--muted);font-size:.9rem}@media(max-width:620px){.cmdrow{flex-direction:column}.copy{align-self:stretch}.cmd{font-size:12px}}
+</style>
+</head>
+<body><main>
+<h1>CN Reliable File Transfer using UDP + SDN</h1>
+<p class="intro">Offline demo command sheet. Use the <b>Copy</b> button beside a command, then paste it into the indicated WSL Ubuntu terminal.</p>
+<div class="notice"><b>Before you start:</b> Use three WSL Ubuntu terminals. Terminal 1 runs POX, Terminal 2 runs Mininet/receiver, and Terminal 3 runs the sender. Keep Terminal 1 and Terminal 2 open while testing. The commands below use the verified project path <code>/home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN</code>.</div>
+
+<section class="section"><h2>Phase 1 — Prepare the environment</h2><span class="terminal">ANY WSL UBUNTU TERMINAL</span>
+<div class="item"><h3>1. Start Open vSwitch</h3><p class="desc">Starts the virtual switch service required by Mininet.</p><div class="cmdrow"><code class="cmd">sudo systemctl start openvswitch-switch</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>2. Check Open vSwitch</h3><p class="desc">Displays OVS status/configuration and confirms that ovs-vsctl responds.</p><div class="cmdrow"><code class="cmd">sudo ovs-vsctl show</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>3. Clean old Mininet state</h3><p class="desc">Run only before starting a fresh demo, not while the demo network is running.</p><div class="cmdrow"><code class="cmd">sudo mn -c</code><button class="copy">Copy</button></div></div>
+</section>
+
+<section class="section"><h2>Phase 2 — Start the POX controller</h2><span class="terminal">TERMINAL 1 — POX</span>
+<div class="item"><h3>4. Go to the POX directory</h3><p class="desc">Changes directory to the installed POX source.</p><div class="cmdrow"><code class="cmd">cd ~/pox</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>5. Launch the project's custom POX controller</h3><p class="desc">Runs POX with Python 3.9, OpenFlow 1.0 on port 6633, link discovery, and your udpreroute component. Leave this terminal running.</p><div class="cmdrow"><code class="cmd">"$(uv python find 3.9)" ./pox.py openflow.of_01 --port=6633 openflow.discovery udpreroute</code><button class="copy">Copy</button></div></div>
+</section>
+
+<section class="section"><h2>Phase 3 — Start Mininet</h2><span class="terminal">TERMINAL 2 — MININET</span>
+<div class="item"><h3>6. Go to the project directory</h3><p class="desc">Opens the folder containing topology.py, sender.py, and receiver.py.</p><div class="cmdrow"><code class="cmd">cd ~/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>7. Start the custom three-switch topology</h3><p class="desc">Creates h1, h2, s1, s2, and s3, using OVS switches connected to POX at 127.0.0.1:6633. Keep the resulting mininet&gt; prompt open.</p><div class="cmdrow"><code class="cmd">sudo mn --custom ~/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/topology.py --topo udptopology --controller=remote,ip=127.0.0.1,port=6633 --switch ovs,protocols=OpenFlow10</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>8. List topology nodes</h3><p class="desc">Run at the mininet&gt; prompt. Confirms the two hosts and three switches.</p><div class="cmdrow"><code class="cmd">nodes</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>9. Show network links</h3><p class="desc">Run at the mininet&gt; prompt. Displays host/switch interfaces and links.</p><div class="cmdrow"><code class="cmd">net</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>10. Test connectivity</h3><p class="desc">Run at the mininet&gt; prompt. Expected: 0% dropped. If first packets drop during discovery, wait briefly and run pingall again.</p><div class="cmdrow"><code class="cmd">pingall</code><button class="copy">Copy</button></div></div>
+</section>
+
+<section class="section"><h2>Phase 4 — Normal UDP file transfer</h2><span class="terminal">TERMINAL 2 — MININET PROMPT</span>
+<div class="item"><h3>11. Start receiver on h2</h3><p class="desc">Run at the mininet&gt; prompt. Starts the UDP receiver on host h2, listening on port 5001. Wait until it says “Receiver listening...” before sending.</p><div class="cmdrow"><code class="cmd">h2 python3 -u /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/receiver.py</code><button class="copy">Copy</button></div></div>
+<span class="terminal">TERMINAL 3 — NORMAL UBUNTU SHELL ($)</span>
+<div class="item"><h3>12. Go to the project directory</h3><p class="desc">Opens the local project folder in the third terminal.</p><div class="cmdrow"><code class="cmd">cd ~/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>13. Send sample.txt from h1 to h2</h3><p class="desc">Runs sender.py inside h1's Mininet network namespace and sends test_files/sample.txt to h2. Use after the receiver is listening.</p><div class="cmdrow"><code class="cmd">sudo mnexec -a $(pgrep -f 'mininet:h1' | head -1) python3 /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/sender.py /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/test_files/sample.txt</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>14. Compare original and received hashes</h3><p class="desc">Run in Terminal 3 after receiver has saved the file. The two SHA-256 values must match.</p><div class="cmdrow"><code class="cmd">sha256sum test_files/sample.txt received_files/sample.txt</code><button class="copy">Copy</button></div></div>
+</section>
+
+<section class="section"><h2>Phase 5 — Link failure and rerouting</h2><span class="terminal">TERMINAL 2 — MININET PROMPT</span>
+<div class="item"><h3>15. Disable the direct s1–s3 link</h3><p class="desc">Simulates a switch-to-switch link failure.</p><div class="cmdrow"><code class="cmd">link s1 s3 down</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>16. Test connectivity after failure</h3><p class="desc">Run pingall. Wait a few seconds for POX link discovery/rule updates; repeat if the first test drops packets.</p><div class="cmdrow"><code class="cmd">pingall</code><button class="copy">Copy</button></div></div>
+<p class="small">In Terminal 1, watch for “Link removed”, “Forwarding rules cleared”, and route selection through switch 2 (for example, [1, 2, 3]).</p>
+<div class="item"><h3>17. Restart receiver on h2</h3><p class="desc">After the previous completed transfer, receiver.py exits. Start it again at the mininet&gt; prompt and wait until it says it is listening.</p><div class="cmdrow"><code class="cmd">h2 python3 -u /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/receiver.py</code><button class="copy">Copy</button></div></div>
+<span class="terminal">TERMINAL 3 — NORMAL UBUNTU SHELL ($)</span>
+<div class="item"><h3>18. Send the file again while s1–s3 is down</h3><p class="desc">Runs the same sender through the remaining route h1–s1–s2–s3–h2. Receiver must be running first.</p><div class="cmdrow"><code class="cmd">sudo mnexec -a $(pgrep -f 'mininet:h1' | head -1) python3 /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/sender.py /home/arunhg/projects/CN-Reliable-File-Transfer-USING-UDP-AND-SDN/test_files/sample.txt</code><button class="copy">Copy</button></div></div>
+</section>
+
+<section class="section"><h2>Phase 6 — Restore and stop</h2><span class="terminal">TERMINAL 2 — MININET PROMPT</span>
+<div class="item"><h3>19. Restore the s1–s3 link</h3><p class="desc">Re-enables the direct link after the failover demonstration.</p><div class="cmdrow"><code class="cmd">link s1 s3 up</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>20. Verify restored connectivity</h3><p class="desc">Run pingall and confirm that the hosts can communicate again.</p><div class="cmdrow"><code class="cmd">pingall</code><button class="copy">Copy</button></div></div>
+<div class="item"><h3>21. Exit Mininet</h3><p class="desc">Stops the Mininet CLI and ends the virtual topology.</p><div class="cmdrow"><code class="cmd">exit</code><button class="copy">Copy</button></div></div>
+<span class="terminal">TERMINAL 1 — POX</span>
+<div class="item"><h3>22. Stop POX</h3><p class="desc">Press this keyboard shortcut in Terminal 1.</p><div class="cmdrow"><code class="cmd">CTRL + C</code><button class="copy">Copy</button></div></div>
+<span class="terminal">ANY WSL UBUNTU TERMINAL</span>
+<div class="item"><h3>23. Final cleanup</h3><p class="desc">Removes any remaining Mininet interfaces/processes after exiting the topology.</p><div class="cmdrow"><code class="cmd">sudo mn -c</code><button class="copy">Copy</button></div></div>
+</section>
+
+<div class="notice"><b>Important reminders</b><ul class="steps"><li>Always start the receiver before the sender.</li><li>Keep POX (Terminal 1) running while Mininet (Terminal 2) is running.</li><li>Run Mininet commands such as nodes, net, pingall, link, and h2 ... at the <code>mininet&gt;</code> prompt.</li><li>Run sender.py and sha256sum in Terminal 3, at the normal Ubuntu shell prompt.</li><li>Do not run <code>sudo mn -c</code> while the live demonstration is in progress.</li><li>The sender command assumes the WSL username/home directory is <code>/home/arunhg</code>, matching the tested setup.</li></ul></div>
+<footer>Prepared from the team's tested WSL demonstration workflow. If your Linux username or project path changes, update the absolute /home/arunhg paths before presenting.</footer>
+</main>
+<script>
+document.querySelectorAll('.copy').forEach(btn=>btn.addEventListener('click',async()=>{
+ const text=btn.parentElement.querySelector('.cmd').innerText;
+ try{
+   if(navigator.clipboard && window.isSecureContext){await navigator.clipboard.writeText(text)}
+   else {const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();const ok=document.execCommand('copy');ta.remove();if(!ok)throw new Error('Copy unavailable')}
+   const old=btn.textContent;btn.textContent='Copied!';btn.classList.add('done');setTimeout(()=>{btn.textContent=old;btn.classList.remove('done')},1300);
+ }catch(e){btn.textContent='Select code';const r=document.createRange();r.selectNodeContents(btn.parentElement.querySelector('.cmd'));const s=window.getSelection();s.removeAllRanges();s.addRange(r)}
+}));
+</script>
+</body></html>
